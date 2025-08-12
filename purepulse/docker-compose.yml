@@ -1,0 +1,118 @@
+services:
+  # ----------------- Shared infrastructure -----------------
+  timescaledb:
+    image: timescale/timescaledb:latest-pg14
+    container_name: tsdb
+    restart: "no"
+    environment:
+      POSTGRES_DB: purepulse
+      POSTGRES_USER: purepulse
+      POSTGRES_PASSWORD: purepulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./timescaledb/init:/docker-entrypoint-initdb.d:ro
+    networks: [purepulse_net]
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U purepulse -d purepulse" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: zk
+    restart: "no"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    networks: [purepulse_net]
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: kfk
+    restart: "no"
+    depends_on: [zookeeper]
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    networks: [purepulse_net]
+
+  # ----------------- Microservices -----------------
+  api_gateway:
+    build: ./api_gateway
+    container_name: api
+    restart: "no"
+    ports: ["8000:8000"]
+    environment:
+      TIMESCALE_URI: postgresql://purepulse@timescaledb:5432/purepulse
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./api_gateway:/app
+      - ./shared:/app/shared
+    depends_on: [timescaledb, kafka]
+    networks: [purepulse_net]
+
+  etl-service:
+    build: ./etl-service
+    container_name: etl
+    restart: "no"
+    ports: ["8010:8000"]
+    environment:
+      TIMESCALE_URI: postgresql://purepulse@timescaledb:5432/purepulse
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./etl-service:/app
+      - ./shared:/app/shared
+    depends_on: [timescaledb, kafka]
+    networks: [purepulse_net]
+
+  model-service:
+    build: ./model-service
+    container_name: model
+    restart: "no"
+    ports: ["8020:8000"]
+    environment:
+      TIMESCALE_URI: postgresql://purepulse@timescaledb:5432/purepulse
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./model-service:/app
+      - ./shared:/app/shared
+    depends_on: [timescaledb, kafka]
+    networks: [purepulse_net]
+
+  alerting-service:
+    build: ./alerting-service
+    container_name: alert
+    restart: "no"
+    ports: ["8030:8000"]
+    environment:
+      TIMESCALE_URI: postgresql://purepulse@timescaledb:5432/purepulse
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./alerting-service:/app
+      - ./shared:/app/shared
+    depends_on: [timescaledb, kafka]
+    networks: [purepulse_net]
+
+  feedback-service:
+    build: ./feedback-service
+    container_name: feedback
+    restart: "no"
+    ports: ["8040:8000"]
+    environment:
+      TIMESCALE_URI: postgresql://purepulse@timescaledb:5432/purepulse
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ./feedback-service:/app
+      - ./shared:/app/shared
+    depends_on: [timescaledb, kafka]
+    networks: [purepulse_net]
+
+# ----------------- Networks -----------------
+
+networks:
+  purepulse_net:
+    driver: bridge

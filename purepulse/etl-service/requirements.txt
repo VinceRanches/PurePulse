@@ -1,0 +1,11 @@
+pandas
+fastapi
+pydantic
+uvicorn[standard]
+httpx
+python-dotenv
+requests
+pandas
+sqlalchemy
+psycopg2-binary
+confluent-kafka
